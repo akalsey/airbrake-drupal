@@ -3,7 +3,7 @@ Airbrake for Drupal
 
 Copyright 2012 [Adam Kalsey](http://kalsey.com)
 
-Implemnts [Airbrake error reporting](http://airbrakeapp.com) for Drupal. Sends reports to Airbrake for PHP Exceptions from any module and watchdog entries of your choice ofseverities (defaults to ERROR and above).
+Implemnts [Airbrake error reporting](http://airbrakeapp.com) for Drupal. Sends reports to Airbrake for PHP Exceptions from any module and watchdog entries of your choice of severities (defaults to ERROR and above).
 
 Requirements
 ------------
