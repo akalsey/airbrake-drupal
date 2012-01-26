@@ -1,0 +1,172 @@
+<?php
+
+/*
+ *  Implements hook_boot to run at drupal bootstrap and catch
+ *  all exceptions.
+ */
+function airbrake_init() {
+  // Catch all exceptions
+  // if (($library = libraries_load('airbrake')) && !empty($library['loaded'])) {
+  //   Airbrake\EventHandler::start(variable_get('airbrake_key', ''));
+  // }
+}
+
+function airbrake_watchdog($log) {
+  $notify_on = variable_get('airbrake_conditions', array(WATCHDOG_EMERGENCY, WATCHDOG_ALERT, WATCHDOG_CRITICAL, WATCHDOG_ERROR));
+  if (in_array($log['severity'], $notify_on)) {
+    $airbrake['component'] = $log['type'];
+    $airbrake['environmentName'] = variable_get('airbrake_environment', 'unset');
+    
+    // just in case there's a field named "password" anywhere, don't send it.
+    $session = $_SESSION;
+    unset($session['password']);
+    $airbrake['sessionData'] = $session;
+    $get = $_GET;
+    unset($get['password']);
+    $airbrake['getData'] = $get;
+    $post = $_POST;
+    unset($post['password']);
+    $airbrake['postData'] = $post;
+    
+    if (($library = libraries_load('airbrake')) && !empty($library['loaded'])) {
+      $config = new Airbrake\Configuration(variable_get('airbrake_key', ''), $airbrake);
+      $client = new Airbrake\Client($config);
+      $response = $client->notifyOnError($log['message']);
+      
+      // Build the http request instead of using one of the built-in methods of the library
+      // so we can use drupal_http_request to make the request.
+      $backtrace = debug_backtrace();
+      if (count($backtrace) > 1) {
+          array_shift($backtrace);
+      }
+      
+  		$notice = new Airbrake\Notice();
+      $notice->load(array(
+          'errorClass'   => 'Drupal Error',
+          'backtrace'    => $backtrace,
+          'errorMessage' => $log['message'],
+      ));
+      
+      $headers = array(
+  			'Accept' => 'text/xml, application/xml',
+  			'Content-Type' => 'text/xml'
+  		);
+  		  		
+  		$opts = array(
+  		    'headers' => $headers,
+  		    'method' => 'POST',
+  		    'timeout' => $config->timeout,
+  		    'data' => $notice->toXml($config)
+  		  );
+      
+      $response = drupal_http_request('http://airbrakeapp.com/notifier_api/v2/notices', $opts);
+      
+      //drupal_set_message('sent airbrake ' . print_r($response, true));
+    }
+  }
+}
+
+function airbrake_libraries_info() {
+  $library['airbrake'] = array(
+    'name' => 'PHP Airbrake',
+    'vendor url' => 'https://github.com/nodrew/php-airbrake',
+    'download url' => 'https://github.com/nodrew/php-airbrake/downloads',
+    'path' => 'src/Airbrake',
+    'version arguments' => array(
+      'file' => 'src/Airbrake/Version.php',
+      'pattern' => "/NUMBER\s+=\s+'(\d+.\d+)'/",
+      ),
+    );
+    
+  $library['airbrake']['files']['php'] = array('EventHandler.php', 'Client.php', 'Configuration.php');
+  return $library;
+}
+
+function airbrake_admin_settings() {
+  $form['airbrake_key'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Airbrake API Key'),
+    '#default_value' => variable_get('airbrake_key', ''),
+  );
+
+  $form['airbrake_environment'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Environment'),
+    '#description' => t('i.e. Production, Development, or Staging. Airbrake will group alerts from each environment together.'),
+    '#default_value' => variable_get('airbrake_environment', ''),
+  );
+
+  $opts = array(
+    WATCHDOG_EMERGENCY => 'Emergency: system is unusable', 
+    WATCHDOG_ALERT => 'Alert: action must be taken immediately', 
+    WATCHDOG_CRITICAL => 'Critical: critical conditions', 
+    WATCHDOG_ERROR => 'Error: error conditions',
+    WATCHDOG_WARNING => 'Warning: warning conditions',
+    WATCHDOG_NOTICE => 'Notice: normal but significant condition',
+    WATCHDOG_INFO => 'Informational: informational messages',
+    WATCHDOG_DEBUG => 'Debug: debug-level messages'
+  ); 
+
+  $form['airbrake_conditions'] = array(
+    '#type' => 'checkboxes',
+    '#title' => t('Severity'),
+    '#description' => t('Which watchdog severities should be sent to Airbrake?'),
+    '#options' => $opts,
+    '#default_value' => variable_get('airbrake_conditions', array(
+        WATCHDOG_EMERGENCY, 
+        WATCHDOG_ALERT, 
+        WATCHDOG_CRITICAL, 
+        WATCHDOG_ERROR)),
+  );
+
+  return system_settings_form($form);
+}
+
+/**
+ * Implements hook_requirements(). Checks to see if the required library
+ * is installed.
+ */
+function airbrake_requirements($phase) {
+  $requirement = array();
+  if ($phase == 'runtime') {
+    if ((!$library = libraries_detect('airbrake')) || empty($library['installed'])) {
+      $requirement[] = array(
+        'title' => 'Airbrake library',
+        'description' => t('The Airbrake library is not installed. Please see the readme file that came with this module for instructions.'),
+        'value' => t('Missing!'),
+        'severity' => REQUIREMENT_ERROR
+        );
+    }
+    $apikey = variable_get('airbrake_key', '');
+    if (empty($apikey)) {
+      $requirement[] = array(
+        'title' => 'Airbrake API Key',
+        'description' => t('@configure the Aibrake module to set an API key.', array('@configure' => l('Configure', 'admin/config/development/airbrake'))),
+        'severity' => REQUIREMENT_ERROR        
+        );
+    }
+    $env = variable_get('airbrake_environment', '');
+    if (empty($env)) {
+      $requirement[] = array(
+        'title' => 'Airbrake Environment name',
+        'description' => t('@configure an environment name in Aibrake for best results.', array('@configure' => l('Configure', 'admin/config/development/airbrake'))),
+        'severity' => REQUIREMENT_WARNING        
+        );
+    }
+  }
+  return $requirement;
+}
+
+// Implements hook_menu
+function airbrake_menu() {
+  $items['admin/config/development/airbrake'] = array(
+    'title' => t('Airbrake'),
+    'description' => t('Configure Airbrake log reporting'),
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('airbrake_admin_settings'),
+    'access arguments' => array('administer site configuration'),
+  );
+  
+  return $items;
+}
+?>
