@@ -44,7 +44,7 @@ function airbrake_watchdog($log) {
       $notice->load(array(
           'errorClass'   => 'Drupal Error',
           'backtrace'    => $backtrace,
-          'errorMessage' => $log['message'],
+          'errorMessage' => strip_tags(format_string($log['message'], $log['variables'])),
       ));
       
       $headers = array(
