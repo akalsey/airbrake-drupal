@@ -18,9 +18,12 @@ function airbrake_watchdog($log) {
     $airbrake['environmentName'] = variable_get('airbrake_environment', 'unset');
     
     // just in case there's a field named "password" anywhere, don't send it.
-    $session = $_SESSION;
-    unset($session['password']);
-    $airbrake['sessionData'] = $session;
+    if(isset($_SESSION)){
+			$session = $_SESSION;
+	    unset($session['password']);
+	    $airbrake['sessionData'] = $session;
+    }
+		
     $get = $_GET;
     unset($get['password']);
     $airbrake['getData'] = $get;
@@ -32,6 +35,7 @@ function airbrake_watchdog($log) {
       $config = new Airbrake\Configuration(variable_get('airbrake_key', ''), $airbrake);
       $client = new Airbrake\Client($config);
       $response = $client->notifyOnError($log['message']);
+			$log['variables'] = isset($log['variables']) ? $log['variables'] : array();
       
       // Build the http request instead of using one of the built-in methods of the library
       // so we can use drupal_http_request to make the request.
