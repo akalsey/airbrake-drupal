@@ -2,4 +2,4 @@ name = Airbrake
 description = Error reporting that doesn't suck
 package = Development
 core = 7.x
-dependencies[] = libraries (2.0)
+dependencies[] = libraries
